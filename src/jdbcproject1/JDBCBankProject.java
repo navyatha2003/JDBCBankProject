@@ -12,7 +12,7 @@ public class JDBCBankProject {
 		
 		private static Connection connection = null;
 		private static Scanner scanner=new Scanner(System.in);
-		private static ResultSet loginCheck;
+		private static ResultSet loginResult;
 		private static PreparedStatement pStatement;
 		private static String depositQuery = "update users set bank_balance = bank_balance + ? where acc_number = ?";
 		private static String withdrawQuery = "update users set bank_balance = bank_balance - ? where (acc_number = ? and bank_balance >= ?)";
@@ -42,9 +42,9 @@ public class JDBCBankProject {
 					pStatement.setLong(1, accNum);
 					pStatement.setString(2, passwordChwck);
 					
-					loginCheck = pStatement.executeQuery();
+					loginResult = pStatement.executeQuery();
 					
-					if(loginCheck()) {
+					if(isLoginValid()) {
 						
 						//
 						System.out.println("Enter your choices: 1) Deposit\n 2) Withdraw\n 3) Transfer\n 4) Check Balance\n 5) exit(Logout)");
@@ -101,17 +101,11 @@ public class JDBCBankProject {
 					e.printStackTrace();
 				}
 			}
-			
-			
-			
-			
-			
-			
 		}
 		
 		public static boolean loginCheck() throws SQLException {
 			
-			if(loginCheck.next()) {
+			if(loginResult.next()) {
 				System.out.println("Login Successful! Welcome ");	
 				return true;
 			} 
@@ -128,8 +122,13 @@ public class JDBCBankProject {
 				pStatement.setInt(1, amount);
 				pStatement.setLong(2, accNum);
 				int res = pStatement.executeUpdate();
-				System.out.println(res);	
-				display();
+				if (res > 0) {
+    				System.out.println("Transaction successful!");
+    				display();
+				} else {
+    				System.out.println("Transaction failed!");
+				}
+
 			}
 		}
 
@@ -146,11 +145,50 @@ public class JDBCBankProject {
 			display();
 		}
 
-		private static void transfer() {
-			
-		}
-		
+		private static void transfer() throws SQLException {
+    		System.out.print("Enter your account number: ");
+    		long fromAcc = scanner.nextLong();
+			System.out.print("Enter receiver account number: ");
+			long toAcc = scanner.nextLong();
+			System.out.print("Enter amount to transfer: ");
+    		int amount = scanner.nextInt();
 
+    		connection.setAutoCommit(false);
+    		try {
+        		// Withdraw from sender
+        		pStatement = connection.prepareStatement(withdrawQuery);
+       			pStatement.setInt(1, amount);
+       			pStatement.setLong(2, fromAcc);
+        		pStatement.setInt(3, amount);
+        		int withdrawRes = pStatement.executeUpdate();
+
+        		// Deposit to receiver (only if withdraw success)
+        		if (withdrawRes > 0) {
+            		pStatement = connection.prepareStatement(depositQuery);
+            		pStatement.setInt(1, amount);
+            		pStatement.setLong(2, toAcc);
+            		int depositRes = pStatement.executeUpdate();
+
+            		if (depositRes > 0) {
+                		connection.commit();
+                		System.out.println("Transfer successful!");
+            		} else {
+                		connection.rollback();
+                		System.out.println("Transfer failed! Receiver not found.");
+            		}
+        		} else {
+            		connection.rollback();
+            		System.out.println("Transfer failed! Insufficient balance or invalid sender.");
+        		}
+
+    		} catch (SQLException e) {
+        		connection.rollback();
+        		System.out.println("Error during transfer: " + e.getMessage());
+    		} finally {
+        		connection.setAutoCommit(true);
+    		}
+		}
+	
 		private static void checkBalance(long accNum) throws SQLException {
 
 			pStatement = connection.prepareStatement(checkBalanceQ);
